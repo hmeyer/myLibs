@@ -24,6 +24,8 @@
 #endif
 
 
+namespace itkBasic {
+  
 typedef itk::IdentityTransform< double, Dimension > IdentityTransformType;
 typedef itk::LinearInterpolateImageFunction< FilterImageType, double > InterpolatorType;
 typedef itk::RecursiveGaussianImageFilter< FilterImageType, FilterImageType > GaussFilterType;
@@ -92,19 +94,19 @@ DicomInputImageType::Pointer getDicomSerie(const FileNamesContainer &filenames, 
 	}
 
 	DicomInputImageType::Pointer result = reader->GetOutput();
-	if (scaleValue > 1)	result = ImageShrink( result, scaleValue );
+	if (scaleValue > 1) result = ImageShrink( result, scaleValue );
 
 	return result;
 }
 
 
 
-void SeriesReader::getSeriesFileNames(int num, FileNamesContainer &fc) {
+void SeriesReader::getSeriesFileNames(unsigned int num, FileNamesContainer &fc) {
 	if (slist.size() > num) fc = slist[num];
 	else fc.clear();
 };
 
-void SeriesReader::readSeriesData(int minSlices) {
+void SeriesReader::readSeriesData(unsigned int minSlices) {
 	nameGenerator->SetUseSeriesDetails( true );
 	nameGenerator->SetDirectory( inputDir );
 	typedef std::vector< std::string > SeriesIdContainer;
@@ -185,14 +187,14 @@ std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
 }
 
 
-
+/*
 FilterImageType::Pointer gaussianScale(const FilterImageType::Pointer sourceImage, double scaleValue, float gaussSigma) {
 	FilterImageType::SizeType destSize;
 	for(unsigned int i = 0; i < Dimension; ++i)
 		destSize[i] = static_cast<FilterImageType::SizeType::SizeValueType>(sourceImage->GetBufferedRegion().GetSize(i) * scaleValue);
 	return gaussTransform(sourceImage, destSize, gaussSigma);
 }
-
+*/
 
 FilterImageType::Pointer gaussTransform(const FilterImageType::Pointer sourceImage, FilterImageType::SizeType destSize, 
 										float gaussSigma, const BaseTransformType *transform) {
@@ -362,3 +364,4 @@ void writeLabelImage( LabeledImageType::Pointer image, const std::string &fname)
 
 }
 
+}

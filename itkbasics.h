@@ -544,20 +544,19 @@ ImagePointerType ImageNot(ImagePointerType input) {
 
 
 
-
 class SeriesReader {
 public:
 	SeriesReader(const std::string &dir): inputDir(dir), nameGenerator( NamesGeneratorType::New())  { }
-	void readSeriesData(int minSlices=20);
+	void readSeriesData(unsigned int minSlices=20);
 	int numSeries(void) { return slist.size(); }
-	void getSeriesFileNames(int num, FileNamesContainer &fc);
+	void getSeriesFileNames(unsigned int num, FileNamesContainer &fc);
 private:
 	std::string inputDir;
 	NamesGeneratorType::Pointer nameGenerator;
 	std::vector< FileNamesContainer > slist;
 };
 
-
+/*
 template<class InputImagePointerType, class OutputImagePointerType>
 OutputImagePointerType gaussTransform(const InputImagePointerType sourceImage, typename OutputImagePointerType::ObjectType::SizeType destSize, 
 										float gaussSigma, const BaseTransformType *transform) {
@@ -568,16 +567,19 @@ OutputImagePointerType gaussTransform(const InputImagePointerType sourceImage, t
 	typedef itk::ResampleImageFilter< OutputImageType, OutputImageType > ResampleFilterType;
 	typedef itk::IdentityTransform< double, Dimension > IdentityTransformType;
 	
-	
-/*
-std::cerr << "Filter, Transformation and Output start" << std::endl;
-	itk::TimeProbesCollectorBase collector;
-	collector.Start( "Filter, Transformation and Output" );
-	collector.Start( "Filter" );
-std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
-*/
-	OutputImageType::SizeType sourceSize = sourceImage->GetBufferedRegion().GetSize();
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#undef DEBUGMSG
+#ifdef DEBUGMSG
+    std::cerr << "Filter, Transformation and Output start" << std::endl;
+	    itk::TimeProbesCollectorBase collector;
+	    collector.Start( "Filter, Transformation and Output" );
+	    collector.Start( "Filter" );
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
+    OutputImageType::SizeType sourceSize = sourceImage->GetBufferedRegion().GetSize();
+
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 
 	OutputImageType::ConstPointer temp;
 #ifdef useFastMemoryHungryGaussian
@@ -587,7 +589,9 @@ std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
 		filter->SetOrder( GaussFilterType::ZeroOrder );
 		filter->SetSigma( gaussSigma );
 		filter->SetInput( sourceImage );
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 		try { filter->Update(); }
 		catch( itk::ExceptionObject & excep ) { std::cerr << "Exception caught !" << std::endl << excep << std::endl; }
 		temp = filter->GetOutput();
@@ -598,7 +602,9 @@ std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
 		filter->SetOrder( GaussFilterType::ZeroOrder );
 		filter->SetSigma( gaussSigma );
 		filter->SetInput( temp );
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 		try { filter->Update(); }
 		catch( itk::ExceptionObject & excep ) { std::cerr << "Exception caught !" << std::endl << excep << std::endl; }
 		temp = filter->GetOutput();
@@ -609,7 +615,9 @@ std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
 		filter->SetOrder( GaussFilterType::ZeroOrder );
 		filter->SetSigma( gaussSigma );
 		filter->SetInput( temp );
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 		try { filter->Update(); }
 		catch( itk::ExceptionObject & excep ) { std::cerr << "Exception caught !" << std::endl << excep << std::endl; }
 		temp = filter->GetOutput();
@@ -620,14 +628,18 @@ std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
 		filter->SetUseImageSpacingOn();
 		filter->SetVariance( std::sqrt(gaussSigma) );
 		filter->SetInput( sourceImage );
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 		try { filter->Update(); }
 		catch( itk::ExceptionObject & excep ) { std::cerr << "Exception caught !" << std::endl << excep << std::endl; }
 		temp = filter->GetOutput();
 	}
 #endif
 
-//	collector.Stop( "Filter" );
+#ifdef DEBUGMSG
+collector.Stop( "Filter" );
+#endif
 	InterpolatorType::Pointer interpolator = InterpolatorType::New();
 	ResampleFilterType::Pointer resampler = ResampleFilterType::New();
 	resampler->SetInterpolator( interpolator );
@@ -644,27 +656,31 @@ std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
 		destSpacing[i] = sourceImage->GetSpacing()[i] * float(sourceSize[i]) / float(destSize[i]);
 	}
 	resampler->SetInput( temp );
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 	resampler->SetSize( destSize );
 	resampler->SetOutputSpacing( destSpacing );
 	resampler->SetOutputOrigin( sourceImage->GetOrigin() );
 	resampler->SetDefaultPixelValue( 0 );
-//std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#ifdef DEBUGMSG
+    std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+#endif
 
 	OutputImageType::Pointer result;
 	try { resampler->Update(); result = resampler->GetOutput(); }
 	catch( itk::ExceptionObject & excep ) { std::cerr << "Exception caught !" << std::endl << excep << std::endl; }
-/*
-std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
-	collector.Stop( "Filter, Transformation and Output" );
-	collector.Report();
-std::cerr << "Filter, Transformation and Output end" << std::endl;
-*/
+#ifdef DEBUGMSG
+  std::cerr << "dbg:" << __FILE__ << " line:" << __LINE__ << std::endl;
+	  collector.Stop( "Filter, Transformation and Output" );
+	  collector.Report();
+  std::cerr << "Filter, Transformation and Output end" << std::endl;
+#endif
 	return result;
 }
+*/
 
-
-
+/*
 template<class InputImagePointerType, class OutputImagePointerType>
 OutputImagePointerType gaussianScale(const InputImagePointerType sourceImage, double scaleValue, float gaussSigma) {
 	typedef typename OutputImagePointerType::ObjectType ImageType;
@@ -673,7 +689,7 @@ OutputImagePointerType gaussianScale(const InputImagePointerType sourceImage, do
 		destSize[i] = static_cast<ImageType::SizeType::SizeValueType>(sourceImage->GetBufferedRegion().GetSize(i) * scaleValue);
 	return gaussTransform<InputImagePointerType,OutputImagePointerType>(sourceImage, destSize, gaussSigma);
 }
-
+*/
 
 
 
