@@ -31,6 +31,13 @@ namespace itk
 		typedef std::map< double, double  > softMipVertexContainer;
 		typedef typename NumericTraits<TInputPixel>::RealType InputRealType;
 		softMipProjector():MaxPosition(0.0), MinPosition(1.0) {}
+		softMipProjector( const softMipProjector &other):MaxPosition(other.MaxPosition), MinPosition(other.MinPosition), Integrals( other.Integrals), softMipFunction( other.softMipFunction ) {}
+		explicit softMipProjector(double f):MaxPosition(0.0), MinPosition(1.0) {
+		  AddVertex( 0.0, 1.0 );
+		  if (f != 0.0) AddVertex( f, f * f );
+		  else AddVertex( 0.000000001, 0);
+		  AddVertex( 1.0, 0.0 );
+		}
 		void Clear() { pixels.clear(); }
 		void AddValue( const TInputPixel& val) { pixels.push_back( val ); }
 		TOutputPixel GetProjectedValue(void) {
@@ -146,9 +153,18 @@ namespace itk
 	std::ostream& operator<<(std::ostream& stream, AverageProjector<TInputPixel, TOutputPixel> const& obj)
 		{  stream << "AverageProjector" << std::endl; return stream; }	
 
+
+  template<class TImagePointerType>
+  TImagePointerType ImageAVG(TImagePointerType image) {
+	  return ImageProjector< TImagePointerType, AverageProjector >( image );
+  }
+
+  template<class TImagePointerType>
+  TImagePointerType ImageMIP(TImagePointerType image) {
+	  return ImageProjector< TImagePointerType, MaximumProjector >( image );
+  }
+
 }
-
-
 
 #endif
 
