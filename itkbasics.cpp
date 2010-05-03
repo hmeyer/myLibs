@@ -75,6 +75,17 @@ void memtest(void) {
 	for( std::list< void * >::iterator i = plist.begin(); i!=plist.end(); ++i) free( *i );
 }	
 
+void replaceMetaData( ReaderType::DictionaryArrayRawPointer dictArrayPointer, const std::string tag, const std::string newvalue, bool additive) {
+	for( ReaderType::DictionaryArrayType::const_iterator it = dictArrayPointer->begin(); it != dictArrayPointer->end(); ++it) {
+		ReaderType::DictionaryRawPointer dp = *it;
+		std::string val;
+		if (additive) {
+		  ExposeMetaData( *dp, tag, val);
+		}
+		val += newvalue;
+		EncapsulateMetaData( *dp, tag, val);
+	}
+}
 
 
 DicomInputImageType::Pointer getDicomSerie(const FileNamesContainer &filenames, ReaderType *reader, unsigned int scaleValue) {

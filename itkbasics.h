@@ -8,6 +8,8 @@
 #include "itkImageSeriesReader.h"
 #include "itkShrinkImageFilter.h"
 #include <itkNearestNeighborInterpolateImageFunction.h>
+#include <itkLaplacianSharpeningImageFilter.h>
+#include <itkWeightedAddImageFilter.h>
 #include <itkExpandImageFilter.h>
 #include <itkRescaleIntensityImageFilter.h>
 #include <itkIntensityWindowingImageFilter.h>
@@ -29,6 +31,7 @@
 #include <itkConnectedThresholdImageFilter.h>
 #include <itkBinaryThresholdImageFilter.h>
 #include <itkGDCMImageIO.h>
+#include "gdcmUIDGenerator.h"
 
 #define useFastMemoryHungryGaussian
 
@@ -176,7 +179,7 @@ typename TDestImageType::Pointer ImageCast(typename TSourceImageType::Pointer in
 	return image;
 }
 
-
+void replaceMetaData( ReaderType::DictionaryArrayRawPointer dictArrayPointer, const std::string tag, const std::string newvalue, bool additive = false);
 
 template<class TImagePointerType>
 void writeDicomSeries(TImagePointerType image, const std::string &fileName, typename itk::ImageSeriesReader< typename TImagePointerType::ObjectType >::DictionaryArrayRawPointer dictArrayPointer, int &index) {
@@ -189,24 +192,27 @@ void writeDicomSeries(TImagePointerType image, const std::string &fileName, type
 		itk::NumericSeriesFileNames::Pointer namesGenerator = itk::NumericSeriesFileNames::New();
 	namesGenerator->SetSeriesFormat(fileName.c_str());
 	namesGenerator->SetStartIndex( index );
-	index += image->GetBufferedRegion().GetSize()[2];
+	if (image->GetImageDimension() == 3)
+	  index += image->GetBufferedRegion().GetSize()[2];
+	else index += 1;
+
 	namesGenerator->SetEndIndex( index - 1 );
 
 	typename SeriesWriterType::Pointer seriesWriter = SeriesWriterType::New();
 	seriesWriter->SetInput( image );
 	ImageIOType::Pointer gdcmImageIO = ImageIOType::New();
+	gdcm::UIDGenerator uid;
+	uid.SetRoot( gdcmImageIO->GetUIDPrefix() );
+	replaceMetaData( dictArrayPointer, "0020|000e", uid.Generate() );
 	seriesWriter->SetImageIO( gdcmImageIO );
-
 	seriesWriter->SetFileNames( namesGenerator->GetFileNames() );
 	seriesWriter->SetMetaDataDictionaryArray( dictArrayPointer );
-	
-
 	seriesWriter->Update();
 }
 
 template<class TImagePointerType>
 void writeDicomSeries(TImagePointerType image, const std::string &fileName, ReaderType::Pointer reader, int &index) {
-	writeDicomSeries( image, fileName, reader->GetMetaDataDictionaryArray(), index);
+  writeDicomSeries( image, fileName, reader->GetMetaDataDictionaryArray(), index);
 }
 
 
@@ -223,16 +229,46 @@ void ImageSave_core(TImagePointerType image, const std::string &fname) {
 	NamesGeneratorType::Pointer nameGenerator = NamesGeneratorType::New();
 	nameGenerator->SetSeriesFormat(fname.c_str());
 	nameGenerator->SetStartIndex( 1 );
-	nameGenerator->SetEndIndex( image->GetBufferedRegion().GetSize()[2] );
+	if (image->GetImageDimension() == 3)
+	  nameGenerator->SetEndIndex( image->GetBufferedRegion().GetSize()[2] );
+	else nameGenerator->SetEndIndex(1);
 	writer->SetFileNames( nameGenerator->GetFileNames() );
 	writer->SetInput( image );
 	try {
 		writer->Update();
-	} catch( itk::ExceptionObject & exp ) {
+	} catch( std::exception & exp ) {
 		std::cerr << "Exception caught !" << std::endl;
-		std::cerr << exp << std::endl;
+		std::cerr << exp.what() << std::endl;
 	}
 }
+
+
+
+template<class TImagePointerType, class TOutImageType >
+typename TOutImageType::Pointer ImageRescaleFlexOutput(TImagePointerType image, typename TImagePointerType::ObjectType::PixelType min, typename TImagePointerType::ObjectType::PixelType max) {
+	typedef typename TImagePointerType::ObjectType TImageType;
+	typename TOutImageType::Pointer rescaledImage;
+	typedef itk::RescaleIntensityImageFilter< TImageType, TOutImageType > RescaleFilterType;
+	typename RescaleFilterType::Pointer rescaler = RescaleFilterType::New();
+	rescaler->SetOutputMinimum(   min );
+	rescaler->SetOutputMaximum( max );
+	rescaler->SetInput( image );
+	try {
+		rescaler->Update();
+	}catch( itk::ExceptionObject & excep ) {
+		std::cerr << "Exception caught !" << std::endl;
+		std::cerr << excep << std::endl;
+	}
+	rescaledImage = rescaler->GetOutput();
+	return rescaledImage;
+}
+
+template<class TImagePointerType>
+TImagePointerType ImageRescale(TImagePointerType image, typename TImagePointerType::ObjectType::PixelType min, typename TImagePointerType::ObjectType::PixelType max) {
+    return ImageRescaleFlexOutput<TImagePointerType, typename TImagePointerType::ObjectType>(image, min, max);
+}
+
+
 
 template<class TImagePointerType>
 void ImageSave(TImagePointerType image, const std::string &fname) {
@@ -253,6 +289,7 @@ void ImageSave(TImagePointerType image, const std::string &fname) {
 	}
 	rescaledImage = rescaler->GetOutput();
 	ImageSave_core( rescaledImage, fname );
+	ImageSave_core( ImageRescaleFlexOutput<TImagePointerType,OutputImageType>(image, 0, 255 ), fname );
 }
 
 
@@ -260,15 +297,30 @@ template<class TImagePointerType>
 void ImageSave(TImagePointerType image, const std::string &fname, 
 	typename TImagePointerType::ObjectType::PixelType wlevel,  typename TImagePointerType::ObjectType::PixelType wwidth) {
 	typedef typename TImagePointerType::ObjectType TImageType;
+	typedef typename TImageType::PixelType InputPixelType;
 	typedef unsigned char OutputPixelType;
 	typedef itk::Image< OutputPixelType, Dimension > OutputImageType;
-	OutputImageType::Pointer rescaledImage;
 	typedef itk::IntensityWindowingImageFilter< TImageType, OutputImageType > RescaleFilterType;
 	typename RescaleFilterType::Pointer rescaler = RescaleFilterType::New();
+	typename OutputImageType::Pointer rescaledImage;
+	
+	InputPixelType minPixel = wlevel-wwidth/2;
+	InputPixelType maxPixel = wlevel+wwidth/2;
+	
+	if ( wwidth==0 ) { // Auto-Window
+	  typedef itk::ImageRegionIterator< TImageType > FilterImageIterator;
+	  FilterImageIterator it( image, image->GetLargestPossibleRegion() );
+	  maxPixel = itk::NumericTraits< InputPixelType >::min();
+	  minPixel = itk::NumericTraits< InputPixelType >::max();
+	  for(it.GoToBegin(); !it.IsAtEnd(); ++it) {
+	    maxPixel = std::max( it.Get(), maxPixel );
+	    minPixel = std::min( it.Get(), minPixel );
+	  }	  
+	}
 	rescaler->SetOutputMinimum(   0 );
 	rescaler->SetOutputMaximum( 255 );
-	rescaler->SetWindowMinimum( wlevel-wwidth/2 );
-	rescaler->SetWindowMaximum( wlevel+wwidth/2 );
+	rescaler->SetWindowMinimum( minPixel );
+	rescaler->SetWindowMaximum( maxPixel );
 	rescaler->SetInput( image );
 	try {
 		rescaler->Update();
@@ -306,6 +358,23 @@ TImagePointerType ImageShrink(TImagePointerType input, ScalesType scales) {
 	typename ImageType::Pointer result = shrinker->GetOutput();
 	return result;
 }
+
+template<class TImagePointerType>
+TImagePointerType ImageSharp(TImagePointerType input, float strength) {
+	typedef typename TImagePointerType::ObjectType ImageType;
+	typedef itk::LaplacianSharpeningImageFilter< ImageType, ImageType > LaplacianFilter;
+	typename LaplacianFilter::Pointer lap = LaplacianFilter::New();
+	lap->SetInput( input );
+	typedef itk::WeightedAddImageFilter< ImageType, ImageType, ImageType> AddFilter;
+	typename AddFilter::Pointer adder = AddFilter::New();
+	adder->SetInput1( lap->GetOutput() );
+	adder->SetInput2( input );
+	adder->SetAlpha( strength );
+	adder->Update();
+	typename ImageType::Pointer result = adder->GetOutput();
+	return result;
+}
+
 
 
 template<class ImagePointerType, class ScalesType, template<typename, typename> class Interpolator>
