@@ -124,6 +124,7 @@ VariableProjectImageFilter<TInputImage,TOutputImage,TProjectorTemplate>
 }
 
 
+#ifndef __itkVariableProjectImageFilter_MULTITHREADED
 /**
  * GenerateData Performs the accumulation
  */
@@ -194,7 +195,80 @@ VariableProjectImageFilter<TInputImage,TOutputImage,TProjectorTemplate>
     ++outputIter;
     }
 }
+#else  
 
+/**
+ * ThreadedGenerateData Performs the accumulation
+ */
+template <class TInputImage, class TOutputImage, template< typename , typename > class TProjectorTemplate >
+void
+VariableProjectImageFilter<TInputImage,TOutputImage,TProjectorTemplate>
+::ThreadedGenerateData(const OutputImageRegionType &outputRegionForThread, int threadId)
+{
+  if(m_AccumulateDimension>=TInputImage::ImageDimension)
+    {
+    itkExceptionMacro(<<"VariableProjectImageFilter: invalid dimension to accumulate. AccumulateDimension = " << m_AccumulateDimension);
+    }
+
+  typedef typename TOutputImage::PixelType OutputPixelType;
+  typedef typename NumericTraits<OutputPixelType>::AccumulateType AccumulateType;
+
+  typename Superclass::InputImageConstPointer  inputImage = this->GetInput();
+  typename TOutputImage::Pointer outputImage = this->GetOutput();
+  
+// Accumulate over the Nth dimension ( = m_AccumulateDimension)
+// and divide by the size of the accumulated dimension.
+  typedef ImageRegionIterator<TOutputImage> outputIterType;
+  outputIterType outputIter(outputImage, outputRegionForThread);
+
+  typedef ImageRegionConstIterator<TInputImage> inputIterType;
+  
+  typename TInputImage::RegionType AccumulatedRegion;
+  typename TInputImage::SizeType AccumulatedSize = inputImage->GetLargestPossibleRegion().GetSize();
+  typename TInputImage::IndexType AccumulatedIndex = inputImage->GetLargestPossibleRegion().GetIndex();
+
+//  unsigned long SizeAccumulateDimension = AccumulatedSize[m_AccumulateDimension];
+  
+  long IndexAccumulateDimension = AccumulatedIndex[m_AccumulateDimension];
+  for(unsigned int i=0; i< InputImageDimension; i++)
+    {
+    if (i != m_AccumulateDimension )
+      {
+      AccumulatedSize[i] = 1;
+      }
+    }
+  AccumulatedRegion.SetSize(AccumulatedSize);
+  outputIter.GoToBegin();
+
+  ProjectorType threadProjector( m_Projector );
+
+  while(!outputIter.IsAtEnd())
+    {
+    typename TOutputImage::IndexType OutputIndex = outputIter.GetIndex();
+    for(unsigned int i=0; i<InputImageDimension; i++)
+      {
+      if (i != m_AccumulateDimension)
+        {
+        AccumulatedIndex[i] = OutputIndex[i];
+        }
+      else
+        {
+        AccumulatedIndex[i] = IndexAccumulateDimension;
+        }
+      }
+    AccumulatedRegion.SetIndex(AccumulatedIndex);
+    inputIterType inputIter(inputImage, AccumulatedRegion);
+    inputIter.GoToBegin();
+    threadProjector.Clear();
+    while(!inputIter.IsAtEnd()) {
+	    threadProjector.AddValue( inputIter.Get() );
+	    ++inputIter;
+	}
+    outputIter.Set( static_cast<OutputPixelType>( threadProjector.GetProjectedValue() ) );
+    ++outputIter;
+    }
+}
+#endif  
 
 template <class TInputImage, class TOutputImage, template< typename , typename > class TProjectorTemplate >
 void

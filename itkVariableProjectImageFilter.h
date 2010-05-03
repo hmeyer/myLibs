@@ -5,6 +5,10 @@
 #include "itkConceptChecking.h"
 #include <numeric>
 
+
+#define __itkVariableProjectImageFilter_MULTITHREADED
+//#undef __itkVariableProjectImageFilter_MULTITHREADED
+
 namespace itk
 {
   
@@ -97,7 +101,12 @@ protected:
    *
    * \sa ImageToImageFilter::ThreadedGenerateData(),
    *     ImageToImageFilter::GenerateData()  */
+  
+#ifndef __itkVariableProjectImageFilter_MULTITHREADED
   void GenerateData(void);
+#else  
+  void ThreadedGenerateData(const OutputImageRegionType &outputRegionForThread, int threadId);
+#endif  
 
 private:
   VariableProjectImageFilter(const Self&); //purposely not implemented
@@ -109,19 +118,18 @@ private:
 
 } // end namespace itk
 
-
+/*
 template <class TInputPixel, class TOutputPixel, const int ptype>
 class MinMaxProjector {
 	public:
 	static const int MaxType = 1;
 	static const int MinType = 2;
-	MinMaxProjector():value( (ptype == MaxType)?itk::NumericTraits< TOutputPixel >::min() : itk::NumericTraits< TOutputPixel >::max() ) {}
+	MinMaxProjector() { Clear(); }
 	void Clear() { value = (ptype == MaxType)?itk::NumericTraits< TOutputPixel >::min() : itk::NumericTraits< TOutputPixel >::max(); }
 	void AddValue( const TInputPixel& val) { value = (ptype == MaxType)?
 		 std::max( value, static_cast<TOutputPixel>( val ) ) :
 		 std::min( value, static_cast<TOutputPixel>( val ) )
 		; }
-
 	TOutputPixel GetProjectedValue(void) { return value; }
 	bool operator!=(MinMaxProjector<TInputPixel, TOutputPixel, ptype> const& obj)
 	{  return obj.value != value; }	
@@ -159,6 +167,12 @@ class softMipProjector {
     }
 
 	softMipProjector():NormalizeFactor(0.0), MaxPosition(0.0) {}
+	explicit softMipProjector(double f) {
+	  AddVertex( 0.0, 1.0 );
+	  if (f != 0.0) AddVertex( f, f * f );
+	  else AddVertex( 0.000000001, 0);
+	  AddVertex( 1.0, 0.0 );
+	}
 	void Clear() { pixels.clear(); }
 	void AddValue( const TInputPixel& val) { pixels.push_back( val ); }
 	TOutputPixel GetProjectedValue(void) {
@@ -238,45 +252,41 @@ std::ostream& operator<<(std::ostream& stream, softMipProjector<TInputPixel, TOu
 template <class TInputPixel, class TOutputPixel>
 class AverageProjector {
 	public:
-	AverageProjector() {}
-	void Clear() { pixels.clear(); }
-	void AddValue( const TInputPixel& val) { pixels.push_back( val ); }
+	AverageProjector() { Clear(); }
+	void Clear() { sum = .0; num = 0; }
+	void AddValue( const TInputPixel& val) { sum += val; num++; }
 	TOutputPixel GetProjectedValue(void) {
-		double val = std::accumulate( pixels.begin(), pixels.end(), 0 );
-		val /= pixels.size();
-		return static_cast<TOutputPixel>(val); 
+	    return static_cast<TOutputPixel>( sum / num );
 	}
 	bool operator!=(AverageProjector<TInputPixel, TOutputPixel> const& obj)
 	{  return false; }	
     private:
-    typedef std::vector< TOutputPixel > PixelContainer;
-    PixelContainer pixels;
+    double sum;
+    unsigned int num;
 };
+
 template <class TInputPixel, class TOutputPixel>
 std::ostream& operator<<(std::ostream& stream, AverageProjector<TInputPixel, TOutputPixel> const& obj)
 	{  stream << "AverageProjector" << std::endl; return stream; }	
-
+*/
 
 template<class TImagePointerType, template < typename, typename > class Projector>
-TImagePointerType ImageProjector(TImagePointerType image) {
+TImagePointerType ImageProjector(TImagePointerType image, 
+				     Projector<typename TImagePointerType::ObjectType::PixelType, typename TImagePointerType::ObjectType::PixelType> proj = 
+					Projector<typename TImagePointerType::ObjectType::PixelType, typename TImagePointerType::ObjectType::PixelType>(),
+					int AccumulateDimension = -1) {
         typedef typename TImagePointerType::ObjectType TImageType;
-        TImagePointerType PImage;
 	typedef itk::VariableProjectImageFilter< TImageType, TImageType, Projector > ProjectFilterType;
         typename ProjectFilterType::Pointer pf = ProjectFilterType::New();
+	pf->SetProjector( proj );
+	if (AccumulateDimension != -1) pf->SetAccumulateDimension( AccumulateDimension );
 	pf->SetInput( image );
 	pf->Update();
+        TImagePointerType PImage;
 	PImage = pf->GetOutput();
 	return PImage;
 }
-template<class TImagePointerType>
-TImagePointerType ImageMIP(TImagePointerType image) {
-	return ImageProjector< TImagePointerType, MaximumProjector >( image );
-}
 
-template<class TImagePointerType>
-TImagePointerType ImageMinMIP(TImagePointerType image) {
-	return ImageProjector< TImagePointerType, MinimumProjector >( image );
-}
 
 
 #ifndef ITK_MANUAL_INSTANTIATION
